@@ -1,0 +1,62 @@
+<?php
+require_once '../config/koneksi.php';
+header('Content-Type: text/html; charset=utf-8');
+
+$nama = clean($_GET['nama'] ?? '');
+$id_spesialis = (int)($_GET['id_spesialis'] ?? 0);
+$id_kota = (int)($_GET['id_kota'] ?? 0);
+
+$sql = "SELECT d.*, s.nama_spesialis, GROUP_CONCAT(DISTINCT kt.nama_kota SEPARATOR ', ') as kota_list,
+        GROUP_CONCAT(DISTINCT k.nama_klinik SEPARATOR ', ') as klinik_list,
+        COUNT(DISTINCT j.id_jadwal) as jumlah_jadwal
+        FROM dokter d
+        LEFT JOIN spesialis s ON s.id_spesialis=d.id_spesialis
+        LEFT JOIN dokter_klinik dk ON dk.id_dokter=d.id_dokter
+        LEFT JOIN klinik k ON k.id_klinik=dk.id_klinik
+        LEFT JOIN kota kt ON kt.id_kota=k.id_kota
+        LEFT JOIN jadwal_praktik j ON j.id_dokter=d.id_dokter
+        WHERE 1=1";
+$params = [];
+if ($nama) { $sql .= " AND d.nama_dokter LIKE ?"; $params[] = "%$nama%"; }
+if ($id_spesialis) { $sql .= " AND d.id_spesialis=?"; $params[] = $id_spesialis; }
+if ($id_kota) { $sql .= " AND kt.id_kota=?"; $params[] = $id_kota; }
+$sql .= " GROUP BY d.id_dokter ORDER BY d.nama_dokter";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$rows = $stmt->fetchAll();
+
+if (isset($_GET['format']) && $_GET['format'] === 'json') {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($rows);
+    exit;
+}
+
+if (empty($rows)) { echo '<p class="text-muted">Tidak ada dokter ditemukan.</p>'; exit; }
+?>
+<div class="row">
+<?php foreach ($rows as $r): ?>
+    <div class="col-md-6 col-lg-4 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3 mb-2">
+                    <div class="avatar bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width:50px;height:50px;font-size:1.2rem">
+                        <?= strtoupper(substr($r['nama_dokter'],0,1)) ?>
+                    </div>
+                    <div>
+                        <h6 class="mb-0"><?= e($r['nama_dokter']) ?></h6>
+                        <small class="text-muted"><?= e($r['nama_spesialis']) ?></small>
+                    </div>
+                </div>
+                <p class="mb-1"><i class="fas fa-map-marker-alt me-1"></i> <?= e($r['kota_list'] ?? '-') ?></p>
+                <p class="mb-1"><i class="fas fa-hospital me-1"></i> <?= e($r['klinik_list'] ?? '-') ?></p>
+                <p class="mb-1"><i class="fas fa-calendar me-1"></i> <?= e($r['jumlah_jadwal'] ?? 0) ?> jadwal</p>
+                <p class="mb-0 text-primary fw-semibold"><?= rupiah($r['biaya_konsultasi']) ?> / konsultasi</p>
+                <div class="mt-3 text-end">
+                    <a href="<?= BASE_URL ?>user/booking/buat.php?id_dokter=<?= e($r['id_dokter']) ?>" class="btn btn-sm btn-primary">Booking</a>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php endforeach; ?>
+</div>
